@@ -2,6 +2,7 @@ import "./globals.css";
 import { Metadata } from "next";
 import Navbar from "@/components/UI/Navbar";
 import localFont from "next/font/local";
+import Footer from "@/components/UI/Footer";
 
 const generalSans = localFont({
   src: [
@@ -78,11 +79,19 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${generalSans.variable} ${clashGrotesk.variable}`}>
-      <body className="w-full flex flex-col items-center p-2">
+      <body className="w-full flex flex-col min-h-screen items-center p-2">
         <Navbar />
-        <div className="max-w-7xl w-full mt-14 pt-2 sm:pt-8">
+        
+        <div className="max-w-7xl mt-14 pt-2 sm:pt-8 flex flex-col grow w-full">
           {children}
         </div>
+        
+        <div className="grow w-full"></div>
+        
+        <div className="w-full">
+          <Footer />
+        </div>
+        
       </body>
     </html>
   );

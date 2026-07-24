@@ -6,8 +6,8 @@ import {
   Search01Icon,
   Cancel01Icon,
   DiscoverCircleIcon,
-  BadgeInfoIcon,
   AiSearch02Icon,
+  MessageQuestionIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useRouter } from "next/navigation";
@@ -58,15 +58,18 @@ const Navbar = () => {
 
   // Default View
   return (
-    <div className="fixed top-0 left-0 w-full h-fit flex flex-row justify-between sm:justify-around items-center p-4 border-b border-black/80 bg-white z-60">
+    <div className="fixed top-0 left-0 w-full h-fit flex flex-row justify-between sm:justify-around items-center p-3 border-b-2 border-gray-200 bg-white z-60">
       
-      <Link href="/" className="flex items-center shrink-0">
+      <Link href="/" className="flex items-center shrink-0 relative">
         <Image 
           src={LogoMain} 
           alt="PDF Lovers Logo" 
-          className="h-6 w-auto object-contain" 
+          width={200}
+          height={50}
+          className="object-contain" 
           priority
         />
+        <p className="absolute -right-2.5 bottom-1 text-blue-500 font-semibold font-cabinet text-md">.in</p>
       </Link>
 
       {/* Wrapped in a form */}
@@ -92,12 +95,12 @@ const Navbar = () => {
           <HugeiconsIcon icon={Search01Icon} size={24} />
         </button>
 
-        <Link href="/" className="p-1">
+        <Link href="/discover" className="p-1">
           <HugeiconsIcon icon={DiscoverCircleIcon} size={24} />
         </Link>
 
         <Link href="/help" className="p-1">
-          <HugeiconsIcon icon={BadgeInfoIcon}  size={24} />
+          <HugeiconsIcon icon={MessageQuestionIcon}  size={24} />
         </Link>
       </div>
     </div>

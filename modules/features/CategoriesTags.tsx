@@ -1,62 +1,54 @@
-"use client"; // Required for useSearchParams in Next.js App Router
+"use client";
 
+import Image from "next/image";
+import Planner from "@/public/Category_Images/planner.png";
+import Template from "@/public/Category_Images/template.png";
+import Courses from "@/public/Category_Images/courses.png";
+import AudioBook from "@/public/Category_Images/audiobook.png";
+import CodeSnippets from "@/public/Category_Images/codesnippets.png";
+import Guides from "@/public/Category_Images/guides.png";
+import Hacks from "@/public/Category_Images/hacks.png";
+import Notes from "@/public/Category_Images/notes.png";
+import Business from "@/public/Category_Images/business.png";
+import Comic from "@/public/Category_Images/comic.png";
+import Language from "@/public/Category_Images/language.png";
+import Finance from "@/public/Category_Images/finance.png";
+import Explore from "@/public/Category_Images/explore.png";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 
-const Categories = [
-    { label: "Planner", slug: "planner" },
-    { label: "Journal", slug: "journal" }, 
-    { label: "Sticker", slug: "sticker" },
-    { label: "Journal Template", slug: "journal-template" },
-    { label: "Budget", slug: "budget" },
-    { label: "Budget Planner", slug: "budget-planner" },
-    { label: "Budget Journal", slug: "budget-journal" },
-    { label: "Finance", slug: "finance" },
-    { label: "Financial Planner", slug: "financial-planner" },
-    { label: "Financial Journal", slug: "financial-journal" },
-    { label: "Financial Template", slug: "financial-template" },
-    { label: "Finance Tracker", slug: "finance-tracker" },
-];
+const CategoriesConstants = [
+   { label:"Notes", icon:Notes, link:"/discover?q=notes" },
+   { label:"Programs", icon:CodeSnippets, link:"/discover?q=programs" },
+   { label:"Courses", icon:Courses, link:"/discover?q=courses" },
+   { label:"Finance", icon:Finance, link:"/discover?q=finance" },
+   { label:"Languages", icon:Language, link:"/discover?q=languages" },
+   { label:"Templates", icon:Template, link:"/discover?q=design" },
+   { label:"Comics", icon:Comic, link:"/discover?q=comic" },
+   { label:"Planners", icon:Planner, link:"/discover?q=planner" },
+   { label:"Hacks", icon:Hacks, link:"/discover?q=hacks" },
+   { label:"Business", icon:Business, link:"/discover?q=business" },
+   { label:"AudioBook", icon:AudioBook, link:"/discover?q=audiobook" },
+   { label:"Guides", icon:Guides, link:"/discover?q=guides" },
+   { label:"Explore more", icon:Explore, link:"/discover" },
+]
 
 const CategoriesTags = () => {
-    // Grab the current category from the URL to determine active state
-    const searchParams = useSearchParams();
-    const currentCategory = searchParams.get("category");
 
     return (
-        <div className="w-full flex flex-row gap-2 overflow-x-scroll scrollbar-none py-1">
-            <Link 
-            href="/" 
-            className={`
-                whitespace-nowrap shrink-0 px-4 py-2 rounded-full text-xs font-general font-medium tracking-wide transition-all duration-300 border
-                ${searchParams.toString() === "" 
-                    ? "bg-white-600 text-blue-600 border-blue-600 shadow-sm" 
-                    : "bg-white text-black border-black/20 hover:border-black hover:bg-black hover:text-white"
-                }
-            `}>
-                All
+        <div className="w-full flex flex-row overflow-x-scroll scrollbar-none gap-4 sm:gap-6">
+
+           { CategoriesConstants.map((item, index) => (
+            <Link href={item.link}>
+            <div className="flex flex-col items-center gap-1">
+               <div className="p-3 rounded-full border border-gray-300 w-16 sm:w-18 h-16 sm:h-18 bg-gray-100">
+                  <Image src={item.icon} alt="" width={50} height={50} className="object-center" />
+               </div>
+               <p className="text-sm font-medium text-gray-600 font-general text-center whitespace-nowrap">
+                  {item.label}
+               </p>
+           </div>
             </Link>
-
-            {Categories.map((item) => {
-                const isActive = currentCategory === item.slug;
-                
-
-                return (
-                    <Link
-                        href={`/?category=${item.slug}`}
-                        key={item.slug}
-                        className={`
-                            whitespace-nowrap shrink-0 px-4 py-2 rounded-full text-xs font-general font-medium tracking-wide transition-all duration-300 border
-                            ${isActive 
-                                ? "bg-white-600 text-blue-600 border-blue-600 shadow-sm" // Active: Solid Blue
-                                : "bg-white text-black border-black/20 hover:border-black hover:bg-black hover:text-white" // Inactive: White with Black hover
-                            }
-                        `}
-                    >
-                        {item.label}
-                    </Link>
-                );
-            })}
+           ))}
         </div>
     );
 };
