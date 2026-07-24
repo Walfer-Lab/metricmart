@@ -1,5 +1,6 @@
 import SearchProductFeed from "@/modules/search/SearchFeed";
 import { Metadata } from "next";
+import { Suspense } from "react";
 
 export const metadata: Metadata = {
     title: "Search templates, courses and guides",
@@ -8,7 +9,9 @@ export const metadata: Metadata = {
 const SearchPage = () => {
     return (
         <div>
-            <SearchProductFeed />
+            <Suspense fallback={null}>
+                <SearchProductFeed />
+            </Suspense>
         </div>
     );
 };
