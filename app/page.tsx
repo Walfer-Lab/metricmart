@@ -1,4 +1,3 @@
-import SellerModal from "@/components/Popup/SellerNotification";
 import CategoriesTags from "@/modules/features/CategoriesTags";
 import Coin from "@/public/icon/coin.png"
 import TrendingProducts from "@/modules/products/trendingProducts";
@@ -27,8 +26,6 @@ export default function Home() {
             <Image src={Coin} alt="coin" className="w-26 h-auto drop-shadow-2xl drop-shadow-black/70" />
         </div>
       </div>
-
-      <SellerModal />
       </main>
     </div>
   );

@@ -1,6 +1,12 @@
 import NotFoundImg from "@/public/404.png";
 import Image from "next/image";
 import Link from "next/link";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+    title: "Not found",
+    description: "Not found",
+}
 
 export default function NotFound () {
     return(
