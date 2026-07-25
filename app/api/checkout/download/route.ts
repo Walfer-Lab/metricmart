@@ -8,8 +8,8 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createAdminClient } from "@/utils/SupabaseAdmin";
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// UPDATED Regex: Matches exactly 11 alphanumeric characters
+const ID_RE = /^[a-zA-Z0-9]{11}$/;
 
 function buildS3Client() {
   const region = process.env.AWS_S3_REGION;
@@ -23,14 +23,8 @@ function buildS3Client() {
   return new S3Client({ region, credentials: { accessKeyId, secretAccessKey } });
 }
 
-// Extracts the S3 object key from whatever format is stored in asset_url:
-//   Plain key:   "products/file.pdf"
-//   Full URL:    "https://bucket.s3.region.amazonaws.com/products/file.pdf"
-//   s3:// URI:   "s3://bucket/products/file.pdf"
-// Also rejects path traversal attempts (keys containing "..")
 function extractS3Key(assetUrl: string, bucket: string): string {
   let key: string;
-
   if (assetUrl.startsWith("s3://")) {
     key = assetUrl.replace(/^s3:\/\/[^/]+\//, "");
   } else if (assetUrl.startsWith("http")) {
@@ -47,12 +41,9 @@ function extractS3Key(assetUrl: string, bucket: string): string {
   if (key.includes("..") || key.startsWith("/")) {
     throw new Error("Invalid asset key");
   }
-
   return key;
 }
 
-/** Shared auth: verify purchase cookie + load sale + product from DB.
- *  Returns { s3Key, productTitle, bucket } or throws a NextResponse on failure. */
 async function authorizeAndLoad(saleId: string): Promise<{
   s3Key: string;
   productTitle: string;
@@ -63,12 +54,10 @@ async function authorizeAndLoad(saleId: string): Promise<{
   const purchaseCookie = cookieStore.get(`purchase_${saleId}`);
 
   if (!purchaseCookie || purchaseCookie.value !== saleId) {
-    // Throw a special sentinel so callers can return 403
     throw Object.assign(new Error("Unauthorized"), { status: 403 });
   }
 
   const admin = createAdminClient();
-
   const { data: sale, error: saleError } = await admin
     .from("sales")
     .select("product_id, status")
@@ -97,7 +86,6 @@ async function authorizeAndLoad(saleId: string): Promise<{
   if (!bucket) throw new Error("AWS_S3_BUCKET_NAME not configured");
 
   const s3Key = extractS3Key(product.asset_url, bucket);
-
   return { s3Key, productTitle: product.title ?? "download", bucket, assetUrl: product.asset_url };
 }
 
@@ -113,9 +101,9 @@ export async function GET(req: Request) {
     const saleId = searchParams.get("saleId");
     const info = searchParams.get("info") === "1";
 
-    // Validate saleId format before touching cookies or DB
-    if (!saleId || !UUID_RE.test(saleId)) {
-      return NextResponse.json({ error: "Invalid saleId" }, { status: 400 });
+    // Validates against the 11-char alphanumeric format instead of UUID
+    if (!saleId || !ID_RE.test(saleId)) {
+      return NextResponse.json({ error: "Invalid saleId format" }, { status: 400 });
     }
 
     let authorized;
@@ -130,7 +118,6 @@ export async function GET(req: Request) {
     const { s3Key, productTitle, bucket } = authorized;
     const s3 = buildS3Client();
 
-    // ── INFO MODE: HeadObject — returns file metadata, no download URL ──────
     if (info) {
       const head = await s3.send(
         new HeadObjectCommand({ Bucket: bucket, Key: s3Key })
@@ -138,7 +125,7 @@ export async function GET(req: Request) {
 
       const contentType = head.ContentType ?? "application/octet-stream";
       const fileSize = head.ContentLength ?? 0;
-      // Derive a friendly extension from content-type
+
       const extMap: Record<string, string> = {
         "application/pdf": "PDF",
         "application/epub+zip": "EPUB",
@@ -147,8 +134,9 @@ export async function GET(req: Request) {
         "image/jpeg": "JPEG",
         "image/png": "PNG",
       };
-      const fileType = extMap[contentType] ?? contentType.split("/")[1]?.toUpperCase() ?? "FILE";
 
+      const fileType = extMap[contentType] ?? contentType.split("/")[1]?.toUpperCase() ?? "FILE";
+      
       return NextResponse.json({
         fileName: `${productTitle}.${fileType.toLowerCase()}`,
         fileSize: formatFileSize(fileSize),
@@ -158,9 +146,7 @@ export async function GET(req: Request) {
       });
     }
 
-    // ── DOWNLOAD MODE: generate 1-hour presigned URL ─────────────────────────
     const safeFileName = encodeURIComponent(`${productTitle}.pdf`);
-
     const command = new GetObjectCommand({
       Bucket: bucket,
       Key: s3Key,
@@ -168,9 +154,8 @@ export async function GET(req: Request) {
       ResponseContentType: "application/pdf",
     });
 
-    // Signed URL valid for 1 hour — matches the purchase cookie TTL
     const signedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
-
+    
     return NextResponse.json({
       downloadUrl: signedUrl,
       fileName: `${productTitle}.pdf`,

@@ -29,9 +29,10 @@ export async function POST(req: Request) {
 
     const admin = createAdminClient();
 
+    // Fetch product details including seller_id which is required for the new schema
     const { data: product } = await admin
       .from("products")
-      .select("price, discount")
+      .select("price, discount, seller_id")
       .eq("id", productId)
       .maybeSingle();
 
@@ -39,20 +40,20 @@ export async function POST(req: Request) {
 
     const basePrice = Number(product.price);
     const productDiscountPct = Math.max(0, Number(product.discount) || 0);
+
     let authorizedAmount = productDiscountPct > 0
       ? basePrice * (1 - productDiscountPct / 100)
       : basePrice;
 
-    let resolvedCouponId: number | null = null;
-    let resolvedCouponTimesUsed: number | null = null;
+    let validCouponCode: string | null = null;
 
     if (couponCode?.trim()) {
       const normalizedCode = couponCode.trim().toUpperCase();
       
       const { data: coupon } = await admin
         .from("coupons")
-        .select("id, discount_percentage, use_limit, min_apply_rate, times_used")
-        .ilike("coupon_name", normalizedCode)
+        .select("discount_percentage, use_limit, min_apply_rate, times_used")
+        .ilike("coupon_code", normalizedCode)
         .maybeSingle();
 
       if (coupon) {
@@ -66,47 +67,42 @@ export async function POST(req: Request) {
 
         if (!limitReached && meetsMinimum) {
           authorizedAmount *= (1 - discountPct / 100);
-          resolvedCouponId = coupon.id;
-          resolvedCouponTimesUsed = timesUsed;
+          validCouponCode = normalizedCode;
         }
       }
     }
 
     authorizedAmount = Math.max(0, Math.round(authorizedAmount * 100) / 100);
 
+    // Insert the sale. The Postgres triggers will handle the wallet updates and coupon increments automatically!
     const { data: sale, error: insertError } = await admin
       .from("sales")
       .insert({
         product_id: productId,
+        seller_id: product.seller_id, // Required for the new wallet triggers
         amount_paid: authorizedAmount,
         razorpay_payment_id: razorpayPaymentId,
         status: "completed",
-        coupon_code: resolvedCouponId ? couponCode.trim().toUpperCase() : null,
+        coupon_code: validCouponCode,
       })
       .select("id")
       .single();
 
     if (insertError) {
-      // 23505 = duplicate razorpay_payment_id; return idempotent success
       if (insertError.code === "23505") {
         const { data: existing } = await admin
           .from("sales")
           .select("id")
           .eq("razorpay_payment_id", razorpayPaymentId)
           .maybeSingle();
-
         if (existing) return await buildSuccessResponse(existing.id);
       }
       console.error("[verify-payment] Insert error:", insertError);
       return NextResponse.json({ error: "Failed to record sale" }, { status: 500 });
     }
 
-    if (resolvedCouponId !== null && resolvedCouponTimesUsed !== null) {
-      await admin
-        .from("coupons")
-        .update({ times_used: resolvedCouponTimesUsed + 1 })
-        .eq("id", resolvedCouponId);
-    }
+    // Removed the manual admin.from("coupons").update() here because 
+    // public.increment_coupon_usage() handles it instantly in the DB.
 
     return await buildSuccessResponse(sale.id);
   } catch (err) {

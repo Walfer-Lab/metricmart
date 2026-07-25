@@ -1,5 +1,4 @@
 'use client';
-
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
@@ -7,6 +6,7 @@ import ProductCard from '@/components/UI/ProductCard';
 import ProductCardSkeleton from '@/components/UI/ProductCardSkeleton';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { AiSearch02Icon } from '@hugeicons/core-free-icons';
+import Filters from "@/modules/features/Filters"; 
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,12 +23,21 @@ export default function SearchProductFeed() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  
+  // NEW: State to track the active filter
+  const [sortBy, setSortBy] = useState('relevance');
 
   const cachedEmbeddingRef = useRef<number[] | null>(null);
   const isFetchingRef = useRef(false);
   const observerTarget = useRef<HTMLDivElement>(null);
 
-  const fetchSearchResults = useCallback(async (currentOffset: number, searchQuery: string, isReset: boolean = false) => {
+  const fetchSearchResults = useCallback(async (
+    currentOffset: number, 
+    searchQuery: string, 
+    currentSort: string,
+    isReset: boolean = false,
+    signal?: AbortSignal
+  ) => {
     if (isFetchingRef.current || !searchQuery.trim()) return;
     isFetchingRef.current = true;
     setLoading(true);
@@ -50,13 +59,24 @@ export default function SearchProductFeed() {
       }
     }
 
-    // 2. Fetch from Hybrid Search RPC
+    if (signal?.aborted) {
+      isFetchingRef.current = false;
+      return;
+    }
+
+    // UPDATED: Pass the new p_sort_by parameter to the database
     const { data, error } = await supabase.rpc('get_ai_search_results', {
       p_search_query: searchQuery,
       p_embedding: queryEmbedding,
       p_limit: PAGE_SIZE,
       p_offset: currentOffset,
+      p_sort_by: currentSort 
     });
+
+    if (signal?.aborted) {
+      isFetchingRef.current = false;
+      return;
+    }
 
     if (!error && data) {
       setProducts((prev) => (isReset ? data : [...prev, ...data]));
@@ -68,26 +88,34 @@ export default function SearchProductFeed() {
     isFetchingRef.current = false;
   }, []);
 
-  // Reset when query URL parameter changes
+  // UPDATED: Reset feed whenever the `query` OR the `sortBy` changes
   useEffect(() => {
+    const abortController = new AbortController();
+    
     setProducts([]);
     setOffset(0);
     setHasMore(true);
-    cachedEmbeddingRef.current = null; // Clear cached vector
+    
+    // Only clear cached AI vector if the actual query word changed (saves API calls!)
+    if (cachedEmbeddingRef.current && query !== searchParams.get('q')) {
+      cachedEmbeddingRef.current = null;
+    }
 
     if (query.trim()) {
-      fetchSearchResults(0, query, true);
+      fetchSearchResults(0, query, sortBy, true, abortController.signal);
     } else {
       setLoading(false);
     }
-  }, [query, fetchSearchResults]);
+
+    return () => abortController.abort();
+  }, [query, sortBy, fetchSearchResults, searchParams]);
 
   // Infinite Scroll Observer
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !loading && !isFetchingRef.current && query.trim()) {
-          fetchSearchResults(offset, query);
+          fetchSearchResults(offset, query, sortBy);
         }
       },
       { threshold: 0.1, rootMargin: '100px' }
@@ -95,14 +123,22 @@ export default function SearchProductFeed() {
 
     if (observerTarget.current) observer.observe(observerTarget.current);
     return () => { if (observerTarget.current) observer.unobserve(observerTarget.current); };
-  }, [offset, query, hasMore, loading, fetchSearchResults]);
+  }, [offset, query, hasMore, loading, sortBy, fetchSearchResults]);
 
   if (!query.trim()) {
     return <div className="text-center py-16 text-gray-500 font-medium">Type something in the search bar to begin.</div>;
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full flex flex-col gap-4">
+      
+      {/* Header Row: Contains Results Count and Filters */}
+      <div className="flex justify-between items-center w-full">
+        <h2 className="text-lg font-semibold text-gray-800">
+          Search results for "{query}"
+        </h2>
+        <Filters currentSort={sortBy} onSortChange={setSortBy} />
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {products.map((product, index) => (

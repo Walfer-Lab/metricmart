@@ -40,12 +40,12 @@ export async function POST(req: Request) {
 
       const { data: coupon } = await admin
         .from("coupons")
-        .select("id, discount_percentage, use_limit, min_apply_rate, times_used")
-        .ilike("coupon_name", normalizedCode)
+        .select("id, discount_percentage, use_limit, min_apply_rate, times_used, is_active")
+        .ilike("coupon_code", normalizedCode) // Updated to match new schema
         .maybeSingle();
 
-      if (!coupon) {
-        return NextResponse.json({ error: "Invalid coupon code" }, { status: 400 });
+      if (!coupon || coupon.is_active === false) {
+        return NextResponse.json({ error: "Invalid or inactive coupon code" }, { status: 400 });
       }
 
       // Safeguard against null DB values
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
 
     const keyId = process.env.RAZORPAY_KEY_ID;
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
-    
+
     if (!keyId || !keySecret) throw new Error("Razorpay credentials missing");
 
     const razorpayRes = await fetch("https://api.razorpay.com/v1/orders", {
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         amount: amountInPaise,
         currency: "INR",
-        receipt: `pdflovers_${productId.slice(0, 8)}_${Date.now()}`,
+        receipt: `receipt_${productId.slice(0, 8)}_${Date.now()}`,
         notes: { productId, couponCode: couponApplied?.code ?? "none" },
       }),
     });
