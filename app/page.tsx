@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function Home() {
   return (
     <div className="p-4">
-      <main className="flex flex-col gap-6">
+      <main className="flex flex-col gap-8">
       <CategoriesTags />
       <TrendingProducts />
 

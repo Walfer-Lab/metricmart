@@ -86,7 +86,7 @@ const Navbar = () => {
         />
       </form>
 
-      <div className="flex flex-row gap-2 sm:gap-4 items-center text-black">
+      <div className="flex flex-row gap-2 sm:gap-4 items-center text-black/80">
         
         <button 
           className="md:hidden p-1" 
