@@ -1,4 +1,4 @@
-import SearchProductFeed from "@/modules/search/SearchFeed";
+import SearchFeedContent from "@/modules/search/SearchFeed";
 import { Metadata } from "next";
 import { Suspense } from "react";
 
@@ -10,7 +10,7 @@ const SearchPage = () => {
     return (
         <div>
             <Suspense fallback={null}>
-                <SearchProductFeed />
+                <SearchFeedContent />
             </Suspense>
         </div>
     );

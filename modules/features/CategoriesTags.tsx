@@ -33,8 +33,8 @@ const CategoriesTags = () => {
     return (
         <div className="w-full flex flex-row overflow-x-scroll scrollbar-none gap-4 sm:gap-6">
 
-           { CategoriesConstants.map((item, index) => (
-            <Link href={item.link}>
+           { CategoriesConstants.map((item) => (
+            <Link key={item.label} href={item.link}>
             <div className="flex flex-col items-center gap-1">
                <div className="p-3 rounded-full border border-gray-300 w-16 sm:w-18 h-16 sm:h-18 bg-gray-100">
                   <Image src={item.icon} alt="" width={50} height={50} className="object-center" />

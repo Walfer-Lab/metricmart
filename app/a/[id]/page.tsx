@@ -1,110 +1,98 @@
 import ImageCarousel from "@/components/Products/ImageCarousel";
 import ProductDetails from "@/components/Products/ProductsDetails";
 import { createClient } from "@/utils/SupabaseServer";
-import { createAdminClient } from "@/utils/SupabaseAdmin";
-import { cookies } from "next/headers";
-import { Metadata } from "next";
+import { notFound } from 'next/navigation';
+import type { Metadata } from 'next';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const revalidate = 60;
 
 export async function generateMetadata({
-    params,
+  params,
 }: {
-    params: Promise<{ id: string }>;
+  params: Promise<{ id: string }>;
 }): Promise<Metadata> {
-    const { id } = await params;
-    const supabase = await createClient();
-    const { data: product } = await supabase
-        .from("products")
-        .select("title")
-        .eq("id", id)
-        .single();
+  const { id } = await params;
+  const supabase = await createClient();
 
-    if (!product) {
-        return {
-            title: "Product Not Found",
-            description: "The requested product could not be found.",
-        };
-    }
+  const { data: product } = await supabase
+    .from('products')
+    .select('title, description, image_urls')
+    .eq('id', id)
+    .single();
 
-    const defaultImage = "/public/logo.png";
-
+  if (!product) {
     return {
-        title: `${product.title} | PDFLOVERS`,
-        description: `Get the ${product.title} PDF now at a discount on PDFLOVERS`,
-        openGraph: {
-            title: `${product.title} | PDFLOVERS`,
-            description: `Get the ${product.title} PDF now at a discount on PDFLOVERS`,
-            images: [
-                {
-                    url: defaultImage,
-                    width: 1200,
-                    height: 630,
-                    alt: product.title,
-                },
-            ],
-            locale: "en_US",
-            type: "website",
-        },
-        twitter: {
-            card: "summary_large_image",
-            title: `${product.title} | PDFLOVERS`,
-            description: `Get the ${product.title} PDF now at a discount on PDFLOVERS`,
-            images: [defaultImage],
-        },
+      title: 'Product Not Found | Metricmart',
+      description: 'The requested product could not be found.',
     };
+  }
+
+  const title = `${product.title} | Metricmart`;
+  const description =
+    product.description ||
+    `Get ${product.title} now at a discount on Metricmart.`;
+  const image =
+    Array.isArray(product.image_urls) && product.image_urls.length > 0
+      ? product.image_urls[0]
+      : undefined;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: 'website',
+      locale: 'en_IN',
+      ...(image && {
+        images: [{ url: image, width: 1200, height: 630, alt: product.title }],
+      }),
+    },
+    twitter: {
+      card: image ? 'summary_large_image' : 'summary',
+      title,
+      description,
+      ...(image && { images: [image] }),
+    },
+  };
 }
 
-const ProductPage = async ({ params }: { params: Promise<{ id: string }> }) => {
-    const { id } = await params;
+export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
-    if (!id || !UUID_RE.test(id)) {
-        return (
-            <main className="flex justify-center items-center min-h-[50vh] font-general text-neutral-500 text-sm">
-                Invalid product ID
-            </main>
-        );
-    }
+  const supabase = await createClient();
 
-    const supabase = await createClient();
-    const { data: product, error } = await supabase
-        .from("products")
-        .select("title, image_urls, description, price, discount, properties, id")
-        .eq("id", id)
-        .single();
+  // 2. Fetch using your exact new table schema
+  const { data: product, error } = await supabase
+    .from('products')
+    .select(`
+      id,
+      title,
+      description,
+      category,
+      price,
+      asset_url,
+      image_urls,
+      properties,
+      discount,
+      views,
+      is_live,
+      created_at,
+      sellers ( id )
+    `)
+    .eq('id', id)
+    .single();
 
-    if (error || !product) {
-        return (
-            <main className="flex justify-center items-center min-h-[50vh] font-general text-neutral-500 text-sm">
-                Product not found or unavailable
-            </main>
-        );
-    }
+  if (error || !product || !product.is_live) {
+    notFound();
+  }
 
-    let existingSaleId: string | null = null;
-    try {
-        const cookieStore = await cookies();
-        const purchaseSaleIds = cookieStore
-            .getAll()
-            .filter((c) => c.name.startsWith("purchase_") && UUID_RE.test(c.value))
-            .map((c) => c.value);
+  const hasDiscount = product.discount && product.discount > 0;
+  const finalPrice = hasDiscount 
+    ? Number(product.price) * (1 - product.discount / 100) 
+    : Number(product.price);
 
-        if (purchaseSaleIds.length > 0) {
-            const admin = createAdminClient();
-            const { data: sale } = await admin
-                .from("sales")
-                .select("id")
-                .in("id", purchaseSaleIds)
-                .eq("product_id", id)
-                .eq("status", "completed")
-                .limit(1)
-                .maybeSingle();
-            existingSaleId = sale?.id ?? null;
-        }
-    } catch {
-    }
-
-    return (
+  return (
         <main className="flex flex-col items-center p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row gap-6 sm:gap-10 max-w-4xl w-full justify-center">
                 <ImageCarousel images={product.image_urls || []} />
@@ -115,11 +103,8 @@ const ProductPage = async ({ params }: { params: Promise<{ id: string }> }) => {
                     discount={product.discount && Number(product.discount) > 0 ? product.discount : undefined}
                     properties={product.properties || []}
                     productId={product.id}
-                    existingSaleId={existingSaleId}
                 />
             </div>
         </main>
     );
 };
-
-export default ProductPage;

@@ -1,5 +1,6 @@
 'use client';
-import { useEffect, useState, useRef, useCallback } from 'react';
+
+import { useEffect, useState, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import ProductCard from '@/components/UI/ProductCard';
@@ -15,34 +16,44 @@ const supabase = createClient(
 
 const PAGE_SIZE = 10;
 
-export default function SearchProductFeed() {
+function SearchFeedContent() {
   const searchParams = useSearchParams();
   const query = searchParams.get('q') || '';
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [products, setProducts] = useState<any[]>([]);
-  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  
-  // NEW: State to track the active filter
   const [sortBy, setSortBy] = useState('relevance');
 
-  const cachedEmbeddingRef = useRef<number[] | null>(null);
+  // FIX: Use refs for ALL background tracking so the observer doesn't loop
+  const offsetRef = useRef(0);
+  const hasMoreRef = useRef(true);
   const isFetchingRef = useRef(false);
+  const loadingRef = useRef(false);
+  
+  const cachedEmbeddingRef = useRef<number[] | null>(null);
+  const lastQueryRef = useRef<string>('');
   const observerTarget = useRef<HTMLDivElement>(null);
 
   const fetchSearchResults = useCallback(async (
     currentOffset: number, 
     searchQuery: string, 
     currentSort: string,
-    isReset: boolean = false,
-    signal?: AbortSignal
+    isReset: boolean = false
   ) => {
     if (isFetchingRef.current || !searchQuery.trim()) return;
+    
     isFetchingRef.current = true;
+    loadingRef.current = true;
     setLoading(true);
 
     let queryEmbedding = cachedEmbeddingRef.current;
+
+    // FIX: Only clear cached AI vector if the actual query text changed
+    if (isReset && lastQueryRef.current !== searchQuery) {
+      cachedEmbeddingRef.current = null;
+      queryEmbedding = null;
+    }
 
     if (!queryEmbedding && isReset) {
       try {
@@ -59,12 +70,8 @@ export default function SearchProductFeed() {
       }
     }
 
-    if (signal?.aborted) {
-      isFetchingRef.current = false;
-      return;
-    }
+    lastQueryRef.current = searchQuery;
 
-    // UPDATED: Pass the new p_sort_by parameter to the database
     const { data, error } = await supabase.rpc('get_ai_search_results', {
       p_search_query: searchQuery,
       p_embedding: queryEmbedding,
@@ -73,57 +80,57 @@ export default function SearchProductFeed() {
       p_sort_by: currentSort 
     });
 
-    if (signal?.aborted) {
-      isFetchingRef.current = false;
-      return;
-    }
-
     if (!error && data) {
       setProducts((prev) => (isReset ? data : [...prev, ...data]));
-      setHasMore(data.length === PAGE_SIZE);
-      setOffset(currentOffset + PAGE_SIZE);
+      const more = data.length === PAGE_SIZE;
+      hasMoreRef.current = more;
+      offsetRef.current = currentOffset + PAGE_SIZE;
     }
 
+    loadingRef.current = false;
     setLoading(false);
     isFetchingRef.current = false;
   }, []);
 
-  // UPDATED: Reset feed whenever the `query` OR the `sortBy` changes
+  // Initial Load & Reset Feed when Query or Sort changes
   useEffect(() => {
-    const abortController = new AbortController();
-    
-    setProducts([]);
-    setOffset(0);
-    setHasMore(true);
-    
-    // Only clear cached AI vector if the actual query word changed (saves API calls!)
-    if (cachedEmbeddingRef.current && query !== searchParams.get('q')) {
-      cachedEmbeddingRef.current = null;
-    }
-
     if (query.trim()) {
-      fetchSearchResults(0, query, sortBy, true, abortController.signal);
+      offsetRef.current = 0;
+      hasMoreRef.current = true;
+      setProducts([]); 
+      fetchSearchResults(0, query, sortBy, true);
     } else {
+      setProducts([]);
       setLoading(false);
     }
-
-    return () => abortController.abort();
-  }, [query, sortBy, fetchSearchResults, searchParams]);
+  }, [query, sortBy, fetchSearchResults]); 
+  // Notice searchParams is NOT in the dependency array above to prevent infinite resets
 
   // Infinite Scroll Observer
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loading && !isFetchingRef.current && query.trim()) {
-          fetchSearchResults(offset, query, sortBy);
+        // Read directly from refs to guarantee fresh data without triggering re-renders
+        if (
+          entries[0].isIntersecting && 
+          hasMoreRef.current && 
+          !loadingRef.current && 
+          !isFetchingRef.current && 
+          query.trim()
+        ) {
+          fetchSearchResults(offsetRef.current, query, sortBy);
         }
       },
       { threshold: 0.1, rootMargin: '100px' }
     );
 
-    if (observerTarget.current) observer.observe(observerTarget.current);
-    return () => { if (observerTarget.current) observer.unobserve(observerTarget.current); };
-  }, [offset, query, hasMore, loading, sortBy, fetchSearchResults]);
+    const currentTarget = observerTarget.current;
+    if (currentTarget) observer.observe(currentTarget);
+    
+    return () => { 
+      if (currentTarget) observer.unobserve(currentTarget); 
+    };
+  }, [query, sortBy, fetchSearchResults]);
 
   if (!query.trim()) {
     return <div className="text-center py-16 text-gray-500 font-medium">Type something in the search bar to begin.</div>;
@@ -134,7 +141,7 @@ export default function SearchProductFeed() {
       
       {/* Header Row: Contains Results Count and Filters */}
       <div className="flex justify-between items-center w-full">
-        <h2 className="text-lg font-semibold text-gray-800">
+        <h2 className="text-md font-medium text-gray-600 truncate">
           Search results for "{query}"
         </h2>
         <Filters currentSort={sortBy} onSortChange={setSortBy} />
@@ -166,5 +173,22 @@ export default function SearchProductFeed() {
 
       <div ref={observerTarget} className="h-4 w-full" />
     </div>
+  );
+}
+
+// Export wrapped in Suspense to satisfy Next.js App Router requirements
+export default function SearchProductFeed() {
+  return (
+    <Suspense fallback={
+      <div className="w-full">
+         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {Array.from({ length: PAGE_SIZE }).map((_, i) => (
+            <ProductCardSkeleton key={`fallback-${i}`} />
+          ))}
+         </div>
+      </div>
+    }>
+      <SearchFeedContent />
+    </Suspense>
   );
 }
